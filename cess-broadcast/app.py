@@ -330,8 +330,20 @@ def montar_json_foward(nome: str, timestamp: int) -> dict:
     }
 
 
+def intervalo_retroativo(total_cursos: int) -> int:
+    """Retorna o intervalo em segundos entre disparos com base na quantidade de cursos."""
+    if total_cursos <= 20:
+        return 120   # 2min
+    elif total_cursos <= 30:
+        return 60    # 1min
+    elif total_cursos <= 50:
+        return 45    # 45s
+    else:
+        return 40    # 40s
+
+
 def montar_json_retomada(nome: str, timestamp: int, data_disparo: str) -> dict:
-    """Estrutura Retomada: add_tag 'Super Chance - Retroativo DD/MM' → fowardAutomation."""
+    """Estrutura Retroativo: add_tag 'Super Chance - Retroativo DD/MM' → fowardAutomation."""
     id_root   = gerar_id_aleatorio()
     id_action = gerar_id_aleatorio()
     id_foward = gerar_id_aleatorio()
@@ -553,13 +565,13 @@ for col_idx, (f_num, (h, m, dia)) in enumerate(H_MAP.items()):
 st.markdown("---")
 
 # ── Session state ─────────────────────────────────────────────────────
-if "modo_retomada" not in st.session_state:
-    st.session_state.modo_retomada = False
+if "modo_retroativo" not in st.session_state:
+    st.session_state.modo_retroativo = False
 
-# ── Estilo do botão Retomada ───────────────────────────────────────────
+# ── Estilo do botão Retroativo ───────────────────────────────────────────
 st.markdown("""
 <style>
-.retomada-btn > div[data-testid="stButton"] > button {
+.retroativo-btn > div[data-testid="stButton"] > button {
     background: transparent !important;
     color: #4d9de0 !important;
     border: 1px solid #1e5fad !important;
@@ -573,7 +585,7 @@ st.markdown("""
     letter-spacing: 0.3px !important;
     margin-top: 0.25rem !important;
 }
-.retomada-btn > div[data-testid="stButton"] > button:hover {
+.retroativo-btn > div[data-testid="stButton"] > button:hover {
     background: #0f1e35 !important;
     opacity: 1 !important;
 }
@@ -584,16 +596,16 @@ col_in, col_cfg = st.columns([1, 2])
 
 with col_in:
     # Campo de data — sempre presente
-    if st.session_state.modo_retomada:
+    if st.session_state.modo_retroativo:
         ret_busca = st.text_input(
             "Nome da semana na planilha",
-            placeholder="ex: Retomada - T 2025",
+            placeholder="ex: Retroativo - T 2025",
             help="Digite o nome exato da semana como aparece na coluna B da planilha."
         )
         ret_data = st.text_input(
             "Dia do disparo",
             placeholder="DD/MM  ex: 15/07",
-            help="Data em que o Broadcast de Retomada será disparado."
+            help="Data em que o Broadcast de Retroativo será disparado."
         )
         ret_hora = st.text_input(
             "Horário inicial de disparo",
@@ -609,16 +621,16 @@ with col_in:
         ret_busca = ret_data = ret_hora = None
 
     # Botão sempre por último na coluna esquerda
-    st.markdown('<div class="retomada-btn">', unsafe_allow_html=True)
-    label_btn = "Cancelar Retomada" if st.session_state.modo_retomada else "Retomada"
-    if st.button(label_btn, key="btn_retomada"):
-        st.session_state.modo_retomada = not st.session_state.modo_retomada
+    st.markdown('<div class="retroativo-btn">', unsafe_allow_html=True)
+    label_btn = "Cancelar Retroativo" if st.session_state.modo_retroativo else "Retroativo"
+    if st.button(label_btn, key="btn_retroativo"):
+        st.session_state.modo_retroativo = not st.session_state.modo_retroativo
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col_cfg:
     # ── MODO RETOMADA ──────────────────────────────────────────────────
-    if st.session_state.modo_retomada:
+    if st.session_state.modo_retroativo:
         if ret_busca:
             with st.spinner("Buscando cursos na planilha..."):
                 lista_ret = buscar_cursos_planilha(ret_busca)
@@ -636,7 +648,7 @@ with col_cfg:
                 if not campos_ok:
                     st.info("Preencha o dia e o horário de disparo para gerar.")
 
-                if campos_ok and st.button("Gerar Pacote ZIP — Retomada"):
+                if campos_ok and st.button("Gerar Pacote ZIP — Retroativo"):
                     try:
                         d_ret, m_ret = map(int, ret_data.strip().split("/"))
                         h_ret, min_ret = map(int, ret_hora.strip().split(":"))
@@ -646,26 +658,39 @@ with col_cfg:
 
                     cursos_alvo = [c for c in lista_ret if c["nome"] in cursos_ret_sel] if cursos_ret_sel else lista_ret
                     total = len(cursos_alvo)
+                    intervalo_s = intervalo_retroativo(total)
+
+                    # Info do intervalo aplicado
+                    if intervalo_s == 120:
+                        info_intervalo = "2min por curso (até 20 cursos)"
+                    elif intervalo_s == 60:
+                        info_intervalo = "1min por curso (21–30 cursos)"
+                    elif intervalo_s == 45:
+                        info_intervalo = "45s por curso (31–50 cursos)"
+                    else:
+                        info_intervalo = "40s por curso (mais de 50 cursos)"
+                    st.info(f"⏱ {total} curso(s) detectado(s) — intervalo aplicado: **{info_intervalo}**")
+
                     progresso = st.progress(0, text="Gerando arquivos...")
                     counter = 0
                     zip_buffer = io.BytesIO()
 
                     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
                         for idx, c_data in enumerate(cursos_alvo):
-                            dt = datetime(2026, m_ret, d_ret, h_ret, min_ret, tzinfo=BRASILIA) + timedelta(minutes=(idx * 2))
-                            nome_final = f"Retomada {ret_data} - {c_data['nome']}"
+                            dt = datetime(2026, m_ret, d_ret, h_ret, min_ret, tzinfo=BRASILIA) + timedelta(seconds=(idx * intervalo_s))
+                            nome_final = f"Retroativo {ret_data} - {c_data['nome']}"
                             json_obj = montar_json_retomada(nome_final, int(dt.timestamp() * 1000), ret_data)
                             nome_arq = nome_final.replace("/", "_")
-                            zf.writestr(f"Retomada/{nome_arq}.json", json.dumps(json_obj, indent=2, ensure_ascii=False))
+                            zf.writestr(f"Retroativo/{nome_arq}.json", json.dumps(json_obj, indent=2, ensure_ascii=False))
                             counter += 1
                             progresso.progress(counter / total, text=f"Gerando: {nome_final}")
 
                     progresso.empty()
-                    st.success(f"✅ {counter} arquivo(s) de Retomada gerado(s) com sucesso!")
+                    st.success(f"✅ {counter} arquivo(s) de Retroativo gerado(s) com sucesso!")
                     st.download_button(
                         label="Baixar ZIP para Importação",
                         data=zip_buffer.getvalue(),
-                        file_name=f"Import_CESS_Retomada_{ret_data.replace('/', '_')}.zip",
+                        file_name=f"Import_CESS_Retroativo_{ret_data.replace('/', '_')}.zip",
                         mime="application/zip"
                     )
             else:
