@@ -552,48 +552,39 @@ for col_idx, (f_num, (h, m, dia)) in enumerate(H_MAP.items()):
 
 st.markdown("---")
 
-# ── Session state ──────────────────────────────────────────────────────
+# ── Session state ─────────────────────────────────────────────────────
 if "modo_retomada" not in st.session_state:
     st.session_state.modo_retomada = False
 
-# ── Botão Retomada (estilo outline azul) ──────────────────────────────
+# ── Estilo do botão Retomada ───────────────────────────────────────────
 st.markdown("""
 <style>
-div[data-testid="stButton"][id="wrap_retomada"] > button,
-div.retomada-btn > div[data-testid="stButton"] > button {
+.retomada-btn > div[data-testid="stButton"] > button {
     background: transparent !important;
     color: #4d9de0 !important;
     border: 1px solid #1e5fad !important;
-    font-size: 0.8rem !important;
-    padding: 0.3rem 1rem !important;
+    font-family: 'Space Mono', monospace !important;
+    font-size: 0.72rem !important;
+    font-weight: 400 !important;
+    padding: 0.2rem 0.75rem !important;
     width: auto !important;
+    min-height: unset !important;
+    line-height: 1.4 !important;
+    letter-spacing: 0.3px !important;
+    margin-top: 0.25rem !important;
 }
-div.retomada-btn > div[data-testid="stButton"] > button:hover {
+.retomada-btn > div[data-testid="stButton"] > button:hover {
     background: #0f1e35 !important;
+    opacity: 1 !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
-col_btn = st.columns([1, 4])
-with col_btn[0]:
-    st.markdown('<div class="retomada-btn">', unsafe_allow_html=True)
-    label_btn = "Cancelar Retomada" if st.session_state.modo_retomada else "Retomada"
-    if st.button(label_btn, key="btn_retomada"):
-        st.session_state.modo_retomada = not st.session_state.modo_retomada
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+col_in, col_cfg = st.columns([1, 2])
 
-st.markdown("---")
-
-# ══════════════════════════════════════════════════════════════════════
-# MODO RETOMADA
-# ══════════════════════════════════════════════════════════════════════
-if st.session_state.modo_retomada:
-    st.markdown('<div class="sub-header">// modo retomada</div>', unsafe_allow_html=True)
-
-    col_r1, col_r2 = st.columns([1, 2])
-
-    with col_r1:
+with col_in:
+    # Campo de data — sempre presente
+    if st.session_state.modo_retomada:
         ret_busca = st.text_input(
             "Nome da semana na planilha",
             placeholder="ex: Retomada - T 2025",
@@ -609,8 +600,25 @@ if st.session_state.modo_retomada:
             placeholder="HH:MM  ex: 12:00",
             help="Horário do primeiro disparo. Os demais serão +2 min por curso."
         )
+    else:
+        data_ref = st.text_input(
+            "Segunda-feira da semana",
+            placeholder="DD/MM  ex: 02/02",
+            help="Digite a data da segunda-feira da semana que deseja gerar."
+        )
+        ret_busca = ret_data = ret_hora = None
 
-    with col_r2:
+    # Botão sempre por último na coluna esquerda
+    st.markdown('<div class="retomada-btn">', unsafe_allow_html=True)
+    label_btn = "Cancelar Retomada" if st.session_state.modo_retomada else "Retomada"
+    if st.button(label_btn, key="btn_retomada"):
+        st.session_state.modo_retomada = not st.session_state.modo_retomada
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col_cfg:
+    # ── MODO RETOMADA ──────────────────────────────────────────────────
+    if st.session_state.modo_retomada:
         if ret_busca:
             with st.spinner("Buscando cursos na planilha..."):
                 lista_ret = buscar_cursos_planilha(ret_busca)
@@ -663,20 +671,8 @@ if st.session_state.modo_retomada:
             else:
                 st.warning(f"⚠️ Nenhum curso encontrado para **{ret_busca}**. Verifique o nome na planilha.")
 
-# ══════════════════════════════════════════════════════════════════════
-# MODO FLUXO NORMAL
-# ══════════════════════════════════════════════════════════════════════
-else:
-    col_in, col_cfg = st.columns([1, 2])
-
-    with col_in:
-        data_ref = st.text_input(
-            "Segunda-feira da semana",
-            placeholder="DD/MM  ex: 02/02",
-            help="Digite a data da segunda-feira da semana que deseja gerar."
-        )
-
-    with col_cfg:
+    # ── MODO FLUXO NORMAL ──────────────────────────────────────────────
+    else:
         if data_ref:
             with st.spinner("Buscando cursos na planilha..."):
                 lista = buscar_cursos_planilha(data_ref)
@@ -748,3 +744,75 @@ else:
                     )
             else:
                 st.warning(f"⚠️ Nenhum curso encontrado para a semana de **{data_ref}**. Verifique a data e a planilha.")
+        if data_ref:
+            with st.spinner("Buscando cursos na planilha..."):
+                lista = buscar_cursos_planilha(data_ref)
+
+            if lista:
+                st.success(f"✅ {len(lista)} curso(s) encontrado(s) para a semana de **{data_ref}**")
+
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    nomes = [c["nome"] for c in lista]
+                    cursos_sel = st.multiselect(
+                        "Cursos (vazio = todos)",
+                        nomes,
+                        help="Deixe em branco para incluir todos os cursos."
+                    )
+                with col_b:
+                    fluxo_sel = st.selectbox(
+                        "Fluxo",
+                        ["Todos", "F1", "F2", "F2.1", "F3", "F4", "F5", "F5.1", "F6", "F7", "F8", "SC1", "SC2", "SC3"]
+                    )
+
+                if st.button("Gerar Pacote ZIP"):
+                    cursos_alvo = [c for c in lista if c["nome"] in cursos_sel] if cursos_sel else lista
+
+                    if fluxo_sel == "Todos":
+                        fluxos_alvo = list(H_MAP.keys())
+                    elif fluxo_sel.startswith("SC"):
+                        fluxos_alvo = [fluxo_sel]
+                    elif "." in fluxo_sel:
+                        fluxos_alvo = [fluxo_sel[1:]]
+                    else:
+                        fluxos_alvo = [int(fluxo_sel[1])]
+
+                    total = len(cursos_alvo) * len(list(fluxos_alvo))
+                    progresso = st.progress(0, text="Gerando arquivos...")
+                    counter = 0
+                    zip_buffer = io.BytesIO()
+
+                    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                        for idx, c_data in enumerate(cursos_alvo):
+                            for f_num in fluxos_alvo:
+                                h, m, _ = H_MAP[f_num]
+                                d_ref, m_ref = map(int, data_ref.split("/"))
+                                dt = datetime(2026, m_ref, d_ref, h, m, tzinfo=BRASILIA) + timedelta(days=OFFSETS[f_num])
+                                dt += timedelta(minutes=(idx * 2))
+
+                                nome_final = f"{data_ref} - F{f_num} - {c_data['nome']}"
+                                if f_num in ("SC1", "SC2", "SC3"):
+                                    nome_final = f"{f_num} {data_ref} - {c_data['nome']}"
+                                    json_obj = montar_json_sc(nome_final, int(dt.timestamp() * 1000))
+                                elif f_num in ("2.1", "5.1"):
+                                    json_obj = montar_json_foward(nome_final, int(dt.timestamp() * 1000))
+                                else:
+                                    tag = c_data["tags"].get(f_num, "")
+                                    json_obj = montar_json_unnichat(nome_final, int(dt.timestamp() * 1000), tag)
+
+                                nome_arq = nome_final.replace("/", "_")
+                                zf.writestr(f"Fluxo_{f_num}/{nome_arq}.json", json.dumps(json_obj, indent=2, ensure_ascii=False))
+                                counter += 1
+                                progresso.progress(counter / total, text=f"Gerando: {nome_final}")
+
+                    progresso.empty()
+                    st.success(f"✅ {counter} arquivo(s) gerado(s) com sucesso!")
+                    st.download_button(
+                        label="Baixar ZIP para Importação",
+                        data=zip_buffer.getvalue(),
+                        file_name=f"Import_CESS_{data_ref.replace('/', '_')}.zip",
+                        mime="application/zip"
+                    )
+            else:
+                st.warning(f"⚠️ Nenhum curso encontrado para a semana de **{data_ref}**. Verifique a data e a planilha.")
+
