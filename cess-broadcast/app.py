@@ -489,6 +489,10 @@ for col_idx, (f_num, (h, m, dia)) in enumerate(H_MAP.items()):
 
 st.markdown("---")
 
+# ── Session state para o modo Retomada ────────────────────────────────
+if "modo_retomada" not in st.session_state:
+    st.session_state.modo_retomada = False
+
 # Input principal
 col_in, col_cfg = st.columns([1, 2])
 
@@ -498,6 +502,35 @@ with col_in:
         placeholder="DD/MM  ex: 02/02",
         help="Digite a data da segunda-feira da semana que deseja gerar."
     )
+
+    # Toggle Retomada
+    label_toggle = "🔴 Cancelar Retomada" if st.session_state.modo_retomada else "🔁 Retomada"
+    if st.button(label_toggle, key="btn_retomada"):
+        st.session_state.modo_retomada = not st.session_state.modo_retomada
+        st.rerun()
+
+    # Campos de Retomada (aparecem abaixo do toggle quando ativo)
+    if st.session_state.modo_retomada:
+        st.markdown("---")
+        retomada_busca = st.text_input(
+            "📅 Nome da semana na planilha (Retomada)",
+            placeholder="ex: Retomada - T 2025",
+            help="Digite o nome exato da semana de retomada como aparece na coluna B da planilha."
+        )
+        retomada_data = st.text_input(
+            "📅 Dia do disparo",
+            placeholder="DD/MM  ex: 15/07",
+            help="Data em que o Broadcast de Retomada será disparado."
+        )
+        retomada_hora = st.text_input(
+            "⏰ Horário inicial de disparo",
+            placeholder="HH:MM  ex: 12:00",
+            help="Horário do primeiro disparo. Os demais serão +2 min por curso."
+        )
+    else:
+        retomada_busca = None
+        retomada_data = None
+        retomada_hora = None
 
 with col_cfg:
     if data_ref:
@@ -518,54 +551,73 @@ with col_cfg:
             with col_b:
                 fluxo_sel = st.selectbox(
                     "⚡ Fluxo",
-                    ["Todos", "F1", "F2", "F2.1", "F3", "F4", "F5", "F5.1", "F6", "F7", "F8", "SC1", "SC2", "SC3", "Retomada"]
+                    ["Todos", "F1", "F2", "F2.1", "F3", "F4", "F5", "F5.1", "F6", "F7", "F8", "SC1", "SC2", "SC3"]
                 )
 
-            # Campos extras para Retomada
-            if fluxo_sel == "Retomada":
-                col_ret_a, col_ret_b = st.columns(2)
-                with col_ret_a:
-                    retomada_data = st.text_input(
-                        "📅 Dia do disparo",
-                        placeholder="DD/MM  ex: 15/07",
-                        help="Data em que o Broadcast de Retomada será disparado."
-                    )
-                with col_ret_b:
-                    retomada_hora = st.text_input(
-                        "⏰ Horário inicial de disparo",
-                        placeholder="HH:MM  ex: 12:00",
-                        help="Horário do primeiro disparo. Os demais serão +2 min por curso."
-                    )
-            else:
-                retomada_data = None
-                retomada_hora = None
-
-            # Validação extra para Retomada antes de mostrar o botão
             retomada_ok = True
-            if fluxo_sel == "Retomada":
-                if not retomada_data or not retomada_hora:
-                    st.info("ℹ️ Preencha o **dia do disparo** e o **horário inicial** para gerar o Broadcast de Retomada.")
+            if st.session_state.modo_retomada:
+                if not retomada_busca or not retomada_data or not retomada_hora:
+                    st.info("ℹ️ Preencha todos os campos de Retomada antes de gerar.")
                     retomada_ok = False
-
             if retomada_ok and st.button("🚀 Gerar Pacote ZIP"):
                 cursos_alvo = [c for c in lista if c["nome"] in cursos_sel] if cursos_sel else lista
 
-                # ── Fluxo de Retomada ──────────────────────────────────────
-                if fluxo_sel == "Retomada":
-                    try:
-                        d_ret, m_ret = map(int, retomada_data.strip().split("/"))
-                        h_ret, min_ret = map(int, retomada_hora.strip().split(":"))
-                    except ValueError:
-                        st.error("❌ Formato inválido. Use DD/MM para a data e HH:MM para o horário.")
-                        st.stop()
+                # ── Fluxos normais ─────────────────────────────────────────
+                if fluxo_sel == "Todos":
+                    fluxos_alvo = list(H_MAP.keys())
+                elif fluxo_sel.startswith("SC"):
+                    fluxos_alvo = [fluxo_sel]
+                elif "." in fluxo_sel:
+                    fluxos_alvo = [fluxo_sel[1:]]
+                else:
+                    fluxos_alvo = [int(fluxo_sel[1])]
 
-                    total = len(cursos_alvo)
-                    progresso = st.progress(0, text="Gerando arquivos...")
-                    counter = 0
-                    zip_buffer = io.BytesIO()
+                # Busca cursos de Retomada se ativo
+                lista_ret = []
+                if st.session_state.modo_retomada and retomada_busca:
+                    with st.spinner("🔍 Buscando cursos de Retomada..."):
+                        lista_ret_raw = buscar_cursos_planilha(retomada_busca)
+                    lista_ret = [c for c in lista_ret_raw if c["nome"] in cursos_sel] if cursos_sel else lista_ret_raw
 
-                    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-                        for idx, c_data in enumerate(cursos_alvo):
+                total = len(cursos_alvo) * len(fluxos_alvo) + len(lista_ret)
+                progresso = st.progress(0, text="Gerando arquivos...")
+                counter = 0
+                zip_buffer = io.BytesIO()
+
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+
+                    for idx, c_data in enumerate(cursos_alvo):
+                        for f_num in fluxos_alvo:
+                            h, m, _ = H_MAP[f_num]
+                            d_ref, m_ref = map(int, data_ref.split("/"))
+                            dt = datetime(2026, m_ref, d_ref, h, m, tzinfo=BRASILIA) + timedelta(days=OFFSETS[f_num])
+                            dt += timedelta(minutes=(idx * 2))
+
+                            nome_final = f"{data_ref} - F{f_num} - {c_data['nome']}"
+                            if f_num in ("SC1", "SC2", "SC3"):
+                                nome_final = f"{f_num} {data_ref} - {c_data['nome']}"
+                                json_obj = montar_json_sc(nome_final, int(dt.timestamp() * 1000))
+                            elif f_num in ("2.1", "5.1"):
+                                json_obj = montar_json_foward(nome_final, int(dt.timestamp() * 1000))
+                            else:
+                                tag = c_data["tags"].get(f_num, "")
+                                json_obj = montar_json_unnichat(nome_final, int(dt.timestamp() * 1000), tag)
+
+                            nome_arq = nome_final.replace("/", "_")
+                            zf.writestr(f"Fluxo_{f_num}/{nome_arq}.json", json.dumps(json_obj, indent=2, ensure_ascii=False))
+                            counter += 1
+                            progresso.progress(counter / total, text=f"Gerando: {nome_final}")
+
+                    # Retomada
+                    if st.session_state.modo_retomada and lista_ret:
+                        try:
+                            d_ret, m_ret = map(int, retomada_data.strip().split("/"))
+                            h_ret, min_ret = map(int, retomada_hora.strip().split(":"))
+                        except ValueError:
+                            st.error("❌ Formato inválido nos campos de Retomada. Use DD/MM e HH:MM.")
+                            st.stop()
+
+                        for idx, c_data in enumerate(lista_ret):
                             dt = datetime(2026, m_ret, d_ret, h_ret, min_ret, tzinfo=BRASILIA) + timedelta(minutes=(idx * 2))
                             nome_final = f"Retomada {retomada_data} - {c_data['nome']}"
                             json_obj = montar_json_foward(nome_final, int(dt.timestamp() * 1000))
@@ -574,65 +626,14 @@ with col_cfg:
                             counter += 1
                             progresso.progress(counter / total, text=f"Gerando: {nome_final}")
 
-                    progresso.empty()
-                    st.success(f"✅ {counter} arquivo(s) de Retomada gerado(s) com sucesso!")
-                    st.download_button(
-                        label="📥 Baixar ZIP para Importação",
-                        data=zip_buffer.getvalue(),
-                        file_name=f"Import_CESS_Retomada_{retomada_data.replace('/', '_')}.zip",
-                        mime="application/zip"
-                    )
-
-                # ── Fluxos normais ─────────────────────────────────────────
-                else:
-                    if fluxo_sel == "Todos":
-                        fluxos_alvo = list(H_MAP.keys())
-                    elif fluxo_sel.startswith("SC"):
-                        fluxos_alvo = [fluxo_sel]
-                    elif "." in fluxo_sel:
-                        fluxos_alvo = [fluxo_sel[1:]]
-                    else:
-                        fluxos_alvo = [int(fluxo_sel[1])]
-
-                    total = len(cursos_alvo) * len(list(fluxos_alvo))
-                    progresso = st.progress(0, text="Gerando arquivos...")
-                    counter = 0
-
-                    zip_buffer = io.BytesIO()
-                    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-                        for idx, c_data in enumerate(cursos_alvo):
-                            for f_num in fluxos_alvo:
-                                h, m, _ = H_MAP[f_num]
-                                d_ref, m_ref = map(int, data_ref.split("/"))
-                                dt = datetime(2026, m_ref, d_ref, h, m, tzinfo=BRASILIA) + timedelta(
-                                    days=OFFSETS[f_num]
-                                )
-                                dt += timedelta(minutes=(idx * 2))
-
-                                nome_final = f"{data_ref} - F{f_num} - {c_data['nome']}"
-                                if f_num in ("SC1", "SC2", "SC3"):
-                                    nome_final = f"{f_num} {data_ref} - {c_data['nome']}"
-                                    json_obj = montar_json_sc(nome_final, int(dt.timestamp() * 1000))
-                                elif f_num in ("2.1", "5.1"):
-                                    json_obj = montar_json_foward(nome_final, int(dt.timestamp() * 1000))
-                                else:
-                                    tag = c_data["tags"].get(f_num, "")
-                                    json_obj = montar_json_unnichat(nome_final, int(dt.timestamp() * 1000), tag)
-
-                                nome_arq = nome_final.replace("/", "_")
-                                zf.writestr(f"Fluxo_{f_num}/{nome_arq}.json", json.dumps(json_obj, indent=2, ensure_ascii=False))
-
-                                counter += 1
-                                progresso.progress(counter / total, text=f"Gerando: {nome_final}")
-
-                    progresso.empty()
-                    st.success(f"✅ {counter} arquivo(s) gerado(s) com sucesso!")
-                    st.download_button(
-                        label="📥 Baixar ZIP para Importação",
-                        data=zip_buffer.getvalue(),
-                        file_name=f"Import_CESS_{data_ref.replace('/', '_')}.zip",
-                        mime="application/zip"
-                    )
+                progresso.empty()
+                st.success(f"✅ {counter} arquivo(s) gerado(s) com sucesso!")
+                st.download_button(
+                    label="📥 Baixar ZIP para Importação",
+                    data=zip_buffer.getvalue(),
+                    file_name=f"Import_CESS_{data_ref.replace('/', '_')}.zip",
+                    mime="application/zip"
+                )
         else:
             st.warning(f"⚠️ Nenhum curso encontrado para a semana de **{data_ref}**. Verifique a data e a planilha.")
 
