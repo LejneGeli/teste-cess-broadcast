@@ -330,6 +330,69 @@ def montar_json_foward(nome: str, timestamp: int) -> dict:
     }
 
 
+def montar_json_retomada(nome: str, timestamp: int, data_disparo: str) -> dict:
+    """Estrutura Retomada: add_tag 'Super Chance - Retroativo DD/MM' → fowardAutomation."""
+    id_root   = gerar_id_aleatorio()
+    id_action = gerar_id_aleatorio()
+    id_foward = gerar_id_aleatorio()
+    tag = f"Super Chance - Retroativo {data_disparo}"
+    return {
+        "status": "draft",
+        "sendType": "scheduled",
+        "name": nome,
+        "templateId": "",
+        "firstStepType": "node",
+        "bodyParameters": [],
+        "urlButtonParameters": [],
+        "headerParameters": [],
+        "audit": {
+            "userId": "cess_manual_gen",
+            "userEmail": "automacao@cess.com.br"
+        },
+        "sendAt": timestamp,
+        "automation": {
+            "name": nome,
+            "category": "automation",
+            "status": "idle",
+            "connectionType": "whatsapp",
+            "node": {
+                "id": id_root,
+                "type": {"id": id_root, "tag": "init", "color": "transparent", "icon": "init"},
+                "sonId": id_action,
+                "pos": "{\"x\":-84.52275666567903,\"y\":2.315691963443271}",
+                "triggers": [{"interaction": "broadcast"}],
+                "nodes": [
+                    {
+                        "id": id_action,
+                        "sonId": id_foward,
+                        "pos": "{\"x\":226.38069856306106,\"y\":67.68179143894525}",
+                        "type": {"id": "action", "tag": "action", "color": "transparent", "icon": ""},
+                        "action": {
+                            "userResourceGroupSendRandomic": False,
+                            "unniiaAtributionOnly": False,
+                            "keepChatActive": False,
+                            "forceAttribution": False,
+                            "type": "add_tag",
+                            "tags": [tag]
+                        }
+                    },
+                    {
+                        "id": id_foward,
+                        "pos": "{\"x\":550.0,\"y\":67.68179143894525}",
+                        "type": {"id": "fowardAutomation", "tag": "fowardAutomation", "color": "transparent", "icon": ""},
+                        "fowardAutomation": {
+                            "automationType": "whatsapp",
+                            "automationId": "",
+                            "automationName": ""
+                        }
+                    }
+                ]
+            },
+            "customFieldsToCreate": {}
+        }
+    }
+
+
 def montar_json_sc(nome: str, timestamp: int) -> dict:
     """Estrutura SC (SC1, SC2, SC3): randomizer + delays + fowardAutomation."""
     id_root     = gerar_id_aleatorio()
@@ -583,7 +646,7 @@ if st.session_state.modo_retomada:
                         for idx, c_data in enumerate(cursos_alvo):
                             dt = datetime(2026, m_ret, d_ret, h_ret, min_ret, tzinfo=BRASILIA) + timedelta(minutes=(idx * 2))
                             nome_final = f"Retomada {ret_data} - {c_data['nome']}"
-                            json_obj = montar_json_foward(nome_final, int(dt.timestamp() * 1000))
+                            json_obj = montar_json_retomada(nome_final, int(dt.timestamp() * 1000), ret_data)
                             nome_arq = nome_final.replace("/", "_")
                             zf.writestr(f"Retomada/{nome_arq}.json", json.dumps(json_obj, indent=2, ensure_ascii=False))
                             counter += 1
